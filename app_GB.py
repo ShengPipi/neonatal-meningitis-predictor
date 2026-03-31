@@ -219,123 +219,30 @@ def transform_features(features_dict):
 
 @st.cache_resource
 def load_model():
-    """加载训练好的 Gradient Boosting 模型（增强版，带详细调试信息）"""
-    
-    # ========== 1. 显示调试信息 ==========
-    st.sidebar.markdown("### 🔍 模型加载调试信息")
-    
-    # 显示当前工作目录
-    current_dir = os.getcwd()
-    st.sidebar.text(f"📂 工作目录: {current_dir}")
-    
-    # 列出当前目录所有文件
-    st.sidebar.text("📁 当前目录文件:")
+    """加载训练好的 Gradient Boosting 模型"""
     try:
-        files = os.listdir(".")
-        for f in sorted(files):
-            if os.path.isfile(f):
-                size = os.path.getsize(f)
-                st.sidebar.text(f"  📄 {f} ({size:,} bytes)")
-            else:
-                st.sidebar.text(f"  📁 {f}/")
-    except Exception as e:
-        st.sidebar.text(f"  无法列出文件: {e}")
-    
-    # ========== 2. 尝试多种方式查找模型 ==========
-    
-    # 方式1: 直接查找所有可能的模型文件名
-    possible_names = [
-        "model_Gradient_Boosting.joblib",
-        "model_Gradient_Boosting.pkl",
-        "model.joblib",
-        "gb_model.joblib",
-        "model_Random_Forest.joblib"  # 备选
-    ]
-    
-    # 方式2: 使用 glob 自动发现
-    for pattern in ["*.joblib", "*.pkl", "*_joblib"]:
-        for f in glob.glob(pattern):
-            if f not in possible_names:
-                possible_names.append(f)
-    
-    # 方式3: 递归搜索子目录
-    for root, dirs, files in os.walk("."):
-        for file in files:
-            if file.endswith(('.joblib', '.pkl')) and file not in possible_names:
-                full_path = os.path.join(root, file)
-                if full_path not in possible_names:
-                    possible_names.append(full_path)
-    
-    st.sidebar.text("🔍 搜索的模型文件:")
-    for name in possible_names[:10]:
-        st.sidebar.text(f"  - {name}")
-    
-    # ========== 3. 尝试加载每个可能的模型文件 ==========
-    for model_path in possible_names:
-        try:
+        # 尝试加载已保存的 Gradient Boosting 模型
+        possible_paths = [
+            "model_Gradient_Boosting.joblib",
+            "model_Gradient_Boosting.pkl",
+            "model.joblib",
+            "gb_model.joblib",
+            "trained_models/model_Gradient_Boosting.joblib"
+        ]
+
+        for model_path in possible_paths:
             if os.path.exists(model_path):
-                st.sidebar.success(f"✅ 找到文件: {model_path}")
-                file_size = os.path.getsize(model_path)
-                st.sidebar.text(f"   文件大小: {file_size:,} bytes")
-                
-                # 尝试加载
                 model = joblib.load(model_path)
-                st.sidebar.success("✅ 模型加载成功！")
-                
-                # 显示模型信息
-                st.sidebar.info(f"""
-                **模型参数**:
-                - 模型类型: {type(model).__name__}
-                - 决策树数量: {getattr(model, 'n_estimators', 'N/A')}
-                - 学习率: {getattr(model, 'learning_rate', 'N/A')}
-                - 最大深度: {getattr(model, 'max_depth', 'N/A')}
-                - 特征数量: {model.n_features_in_ if hasattr(model, 'n_features_in_') else 'N/A'}
-                """)
-                
-                # 显示模型使用的特征名称
-                if hasattr(model, 'feature_names_in_'):
-                    st.sidebar.info("**模型特征顺序**:")
-                    for i, feature in enumerate(model.feature_names_in_, 1):
-                        st.sidebar.text(f"  {i}. {feature}")
-                
+                st.sidebar.success("✅ 模型加载成功")
                 return model
-                
-            else:
-                st.sidebar.text(f"⚠️ 文件不存在: {model_path}")
-                
-        except Exception as e:
-            st.sidebar.error(f"❌ 加载失败 {model_path}: {str(e)}")
-            continue
-    
-    # ========== 4. 如果都找不到，显示错误 ==========
-    st.sidebar.error("❌ 未找到可用的模型文件")
-    
-    # 尝试读取文件内容检查是否损坏
-    for model_path in possible_names:
-        if os.path.exists(model_path):
-            try:
-                with open(model_path, 'rb') as f:
-                    header = f.read(100)
-                st.sidebar.text(f"文件头部 ({model_path}): {header[:50]}")
-            except:
-                pass
-    
-    # 提示用户检查
-    st.sidebar.info("""
-    **可能的原因**:
-    1. 模型文件未正确上传到 GitHub
-    2. 模型文件在 Git 传输中损坏
-    3. 文件权限问题
-    4. Streamlit Cloud 缓存问题
-    
-    **建议**:
-    1. 检查 GitHub 上文件大小是否正常
-    2. 重新上传模型文件
-    3. 在 Streamlit Cloud 中重启应用
-    4. 清除应用缓存
-    """)
-    
-    return None
+
+        # 如果找不到保存的模型文件
+        st.sidebar.error("❌ 未找到模型文件")
+        return None
+
+    except Exception as e:
+        st.sidebar.error(f"❌ 模型加载失败: {str(e)}")
+        return None
 
 
 # ==================== 预测函数 ====================
