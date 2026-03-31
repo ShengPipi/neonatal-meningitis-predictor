@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
+import glob
 import warnings
 from sklearn.ensemble import GradientBoostingClassifier
 
@@ -62,10 +63,10 @@ with st.sidebar:
     st.header("📐 数据转换说明")
     st.info("""
     **对数转换公式**:
-
+    
     log_csf_wbc = log10(脑脊液白细胞 + 1)
     log_csf_protein = log10(脑脊液蛋白 + 1)
-
+    
     **转换目的**:
     - 改善数据分布
     - 降低异常值影响
@@ -75,21 +76,21 @@ with st.sidebar:
 # ==================== 特征定义 ====================
 
 # 定义输入模型的11个特征（与训练时完全一致的中文名称和顺序）
-# 训练时的特征顺序：脑脊液白细胞 惊厥 肌张力改变 脑脊液培养阳性 原始反射异常
+# 训练时的特征顺序：脑脊液白细胞 惊厥 肌张力改变 脑脊液培养阳性 原始反射异常 
 #                   机械通气 C反应蛋白 青紫 低血压 脑脊液蛋白 肝脏增大
 # 注意：脑脊液白细胞和脑脊液蛋白使用的是对数转换后的值
 CLINICAL_FEATURES_MODEL = [
-    '脑脊液白细胞',  # log10(原始值+1)
-    '惊厥',  # convulsion
-    '肌张力改变',  # muscle_tone_abnormal
-    '脑脊液培养阳性',  # csf_culture_positive
-    '原始反射异常',  # primitive_reflex_abnormal
-    '机械通气',  # mechanical_ventilation
-    'C反应蛋白',  # crp
-    '青紫',  # cyanosis
-    '低血压',  # hypotension
-    '脑脊液蛋白',  # log10(原始值+1)
-    '肝脏增大'  # liver_enlargement
+    '脑脊液白细胞',      # log10(原始值+1)
+    '惊厥',              # convulsion
+    '肌张力改变',        # muscle_tone_abnormal
+    '脑脊液培养阳性',    # csf_culture_positive
+    '原始反射异常',      # primitive_reflex_abnormal
+    '机械通气',          # mechanical_ventilation
+    'C反应蛋白',         # crp
+    '青紫',              # cyanosis
+    '低血压',            # hypotension
+    '脑脊液蛋白',        # log10(原始值+1)
+    '肝脏增大'           # liver_enlargement
 ]
 
 # 原始特征名称（英文）到中文的映射
@@ -155,11 +156,11 @@ FEATURE_HELP = {
 def log_transform(value, epsilon=1):
     """
     对数值进行对数转换：log10(value + epsilon)
-
+    
     参数:
     value: 原始数值
     epsilon: 加常数，防止log(0)，默认为1
-
+    
     返回:
     转换后的对数值
     """
@@ -185,14 +186,14 @@ def transform_features(features_dict):
     cyanosis = features_dict.get('cyanosis', 0)
     hypotension = features_dict.get('hypotension', 0)
     liver = features_dict.get('liver_enlargement', 0)
-
+    
     # 对脑脊液白细胞和脑脊液蛋白进行对数转换
     log_csf_wbc = log_transform(csf_wbc_raw)
     log_csf_protein = log_transform(csf_protein_raw)
-
+    
     # 构建与训练时完全一致的特征字典（使用对数转换后的值）
     transformed = {
-        '脑脊液白细胞': log_csf_wbc,  # 对数转换后
+        '脑脊液白细胞': log_csf_wbc,      # 对数转换后
         '惊厥': convulsion,
         '肌张力改变': muscle_tone,
         '脑脊液培养阳性': csf_culture,
@@ -201,95 +202,140 @@ def transform_features(features_dict):
         'C反应蛋白': crp,
         '青紫': cyanosis,
         '低血压': hypotension,
-        '脑脊液蛋白': log_csf_protein,  # 对数转换后
+        '脑脊液蛋白': log_csf_protein,    # 对数转换后
         '肝脏增大': liver
     }
-
+    
     # 保存原始值用于显示
     transformed['csf_wbc_raw'] = csf_wbc_raw
     transformed['csf_protein_raw'] = csf_protein_raw
     transformed['log_csf_wbc'] = log_csf_wbc
     transformed['log_csf_protein'] = log_csf_protein
-
+    
     return transformed
 
 
 # ==================== 模型加载函数 ====================
 
-def create_gradient_boosting_model():
-    """
-    根据 best_parameters.csv 中的最佳参数创建 Gradient Boosting 模型
-
-    最佳参数 (来自 best_parameters.csv):
-    - learning_rate: 0.05
-    - max_depth: 3
-    - n_estimators: 50
-    - subsample: 0.9
-    - min_samples_split: 5
-    - random_state: 42
-    """
-    gb_model = GradientBoostingClassifier(
-        n_estimators=50,
-        learning_rate=0.05,
-        max_depth=3,
-        subsample=0.9,
-        min_samples_split=5,
-        random_state=42,
-        verbose=0
-    )
-    return gb_model
-
-
 @st.cache_resource
 def load_model():
-    """加载训练好的 Gradient Boosting 模型"""
+    """加载训练好的 Gradient Boosting 模型（增强版，带详细调试信息）"""
+    
+    # ========== 1. 显示调试信息 ==========
+    st.sidebar.markdown("### 🔍 模型加载调试信息")
+    
+    # 显示当前工作目录
+    current_dir = os.getcwd()
+    st.sidebar.text(f"📂 工作目录: {current_dir}")
+    
+    # 列出当前目录所有文件
+    st.sidebar.text("📁 当前目录文件:")
     try:
-        # 尝试加载已保存的 Gradient Boosting 模型
-        possible_paths = [
-            "trained_models/model_Gradient_Boosting.joblib",
-            "model_Gradient_Boosting.joblib",
-            "model_Gradient_Boosting.pkl",
-            "gb_model.joblib",
-            "../trained_models/model_Gradient_Boosting.joblib"
-        ]
-
-        for model_path in possible_paths:
+        files = os.listdir(".")
+        for f in sorted(files):
+            if os.path.isfile(f):
+                size = os.path.getsize(f)
+                st.sidebar.text(f"  📄 {f} ({size:,} bytes)")
+            else:
+                st.sidebar.text(f"  📁 {f}/")
+    except Exception as e:
+        st.sidebar.text(f"  无法列出文件: {e}")
+    
+    # ========== 2. 尝试多种方式查找模型 ==========
+    
+    # 方式1: 直接查找所有可能的模型文件名
+    possible_names = [
+        "model_Gradient_Boosting.joblib",
+        "model_Gradient_Boosting.pkl",
+        "model.joblib",
+        "gb_model.joblib",
+        "model_Random_Forest.joblib"  # 备选
+    ]
+    
+    # 方式2: 使用 glob 自动发现
+    for pattern in ["*.joblib", "*.pkl", "*_joblib"]:
+        for f in glob.glob(pattern):
+            if f not in possible_names:
+                possible_names.append(f)
+    
+    # 方式3: 递归搜索子目录
+    for root, dirs, files in os.walk("."):
+        for file in files:
+            if file.endswith(('.joblib', '.pkl')) and file not in possible_names:
+                full_path = os.path.join(root, file)
+                if full_path not in possible_names:
+                    possible_names.append(full_path)
+    
+    st.sidebar.text("🔍 搜索的模型文件:")
+    for name in possible_names[:10]:
+        st.sidebar.text(f"  - {name}")
+    
+    # ========== 3. 尝试加载每个可能的模型文件 ==========
+    for model_path in possible_names:
+        try:
             if os.path.exists(model_path):
+                st.sidebar.success(f"✅ 找到文件: {model_path}")
+                file_size = os.path.getsize(model_path)
+                st.sidebar.text(f"   文件大小: {file_size:,} bytes")
+                
+                # 尝试加载
                 model = joblib.load(model_path)
-                st.sidebar.success(f"✅ 成功加载 Gradient Boosting 模型: {model_path}")
-
+                st.sidebar.success("✅ 模型加载成功！")
+                
                 # 显示模型信息
                 st.sidebar.info(f"""
                 **模型参数**:
-                - 决策树数量: {model.n_estimators}
-                - 学习率: {model.learning_rate}
-                - 最大深度: {model.max_depth}
-                - 子采样比例: {model.subsample}
-                - 特征数量: {model.n_features_in_}
+                - 模型类型: {type(model).__name__}
+                - 决策树数量: {getattr(model, 'n_estimators', 'N/A')}
+                - 学习率: {getattr(model, 'learning_rate', 'N/A')}
+                - 最大深度: {getattr(model, 'max_depth', 'N/A')}
+                - 特征数量: {model.n_features_in_ if hasattr(model, 'n_features_in_') else 'N/A'}
                 """)
-
-                # 显示模型使用的特征名称（调试用）
+                
+                # 显示模型使用的特征名称
                 if hasattr(model, 'feature_names_in_'):
-                    st.sidebar.info(f"**模型特征顺序**:")
+                    st.sidebar.info("**模型特征顺序**:")
                     for i, feature in enumerate(model.feature_names_in_, 1):
                         st.sidebar.text(f"  {i}. {feature}")
-
+                
                 return model
-
-        # 如果找不到保存的模型文件
-        st.sidebar.warning("⚠️ 未找到预训练模型文件")
-        st.sidebar.info("""
-        请将训练好的 Gradient Boosting 模型文件放置在以下位置之一:
-        - 当前目录: model_Gradient_Boosting.joblib
-        - trained_models/ 目录: trained_models/model_Gradient_Boosting.joblib
-
-        或者先运行 Model_Construction_0125.py 训练模型
-        """)
-        return None
-
-    except Exception as e:
-        st.sidebar.error(f"❌ 模型加载失败: {str(e)}")
-        return None
+                
+            else:
+                st.sidebar.text(f"⚠️ 文件不存在: {model_path}")
+                
+        except Exception as e:
+            st.sidebar.error(f"❌ 加载失败 {model_path}: {str(e)}")
+            continue
+    
+    # ========== 4. 如果都找不到，显示错误 ==========
+    st.sidebar.error("❌ 未找到可用的模型文件")
+    
+    # 尝试读取文件内容检查是否损坏
+    for model_path in possible_names:
+        if os.path.exists(model_path):
+            try:
+                with open(model_path, 'rb') as f:
+                    header = f.read(100)
+                st.sidebar.text(f"文件头部 ({model_path}): {header[:50]}")
+            except:
+                pass
+    
+    # 提示用户检查
+    st.sidebar.info("""
+    **可能的原因**:
+    1. 模型文件未正确上传到 GitHub
+    2. 模型文件在 Git 传输中损坏
+    3. 文件权限问题
+    4. Streamlit Cloud 缓存问题
+    
+    **建议**:
+    1. 检查 GitHub 上文件大小是否正常
+    2. 重新上传模型文件
+    3. 在 Streamlit Cloud 中重启应用
+    4. 清除应用缓存
+    """)
+    
+    return None
 
 
 # ==================== 预测函数 ====================
@@ -297,13 +343,13 @@ def load_model():
 def predict_risk(features_dict, model, threshold_option, youden_threshold=0.248):
     """
     执行风险预测
-
+    
     参数:
     features_dict: 转换后的特征字典（包含对数转换后的值）
     model: 加载的 Gradient Boosting 模型
     threshold_option: 阈值策略选项
     youden_threshold: Youden最优阈值（默认0.248）
-
+    
     返回:
     risk_prob: 高风险概率
     prediction: 预测类别 (0/1)
@@ -312,32 +358,35 @@ def predict_risk(features_dict, model, threshold_option, youden_threshold=0.248)
     """
     # 确保特征顺序与模型训练时一致
     feature_order = CLINICAL_FEATURES_MODEL
-
+    
     # 创建特征DataFrame
     features_for_model = {}
     missing_features = []
-
+    
     for key in feature_order:
         if key in features_dict:
             features_for_model[key] = features_dict[key]
         else:
             missing_features.append(key)
-
+    
     if missing_features:
         st.error(f"缺少特征: {missing_features}")
         return None, None, None, None
-
+    
     features_df = pd.DataFrame([features_for_model])
     features_df = features_df[feature_order]
-
+    
     # 使用真实模型预测
     if model is not None:
         try:
             # 如果模型有特征名称要求，确保顺序正确（静默处理）
             if hasattr(model, 'feature_names_in_'):
-                # 直接使用模型的特征顺序重新排列
-                features_df = features_df[model.feature_names_in_]
-
+                # 检查特征是否匹配
+                model_features = list(model.feature_names_in_)
+                if list(features_df.columns) != model_features:
+                    # 静默重新排序
+                    features_df = features_df[model_features]
+            
             risk_prob = model.predict_proba(features_df)[0, 1]
         except Exception as e:
             st.error(f"模型预测失败: {str(e)}")
@@ -345,7 +394,7 @@ def predict_risk(features_dict, model, threshold_option, youden_threshold=0.248)
     else:
         st.error("模型未加载，无法进行预测")
         return None, None, None, None
-
+    
     # 根据阈值策略确定阈值
     if threshold_option == "Youden阈值":
         threshold = youden_threshold
@@ -353,9 +402,9 @@ def predict_risk(features_dict, model, threshold_option, youden_threshold=0.248)
         threshold = 0.30
     else:
         threshold = 0.70
-
+    
     prediction = 1 if risk_prob >= threshold else 0
-
+    
     return risk_prob, prediction, threshold, features_df
 
 
@@ -380,7 +429,7 @@ def get_risk_advice(prediction, probability, threshold):
     if prediction == 1:
         return """
         ### ⚠️ 临床建议
-
+        
         1. **立即评估**: 建议进行详细临床评估
         2. **密切监测**: 加强生命体征监测
         3. **考虑干预**: 根据具体病因考虑相应治疗措施
@@ -390,7 +439,7 @@ def get_risk_advice(prediction, probability, threshold):
     else:
         return """
         ### ✅ 临床建议
-
+        
         1. **常规监测**: 按新生儿常规进行监护
         2. **定期评估**: 定期进行临床评估和随访
         3. **健康教育**: 向家属交代注意事项
@@ -406,7 +455,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("🧠 神经系统特征")
-
+    
     # 按照训练时的顺序：惊厥、肌张力改变、原始反射异常
     convulsion = st.selectbox(
         "惊厥",
@@ -414,35 +463,35 @@ with col1:
         format_func=lambda x: "有 (1)" if x == 1 else "无 (0)",
         help=FEATURE_HELP['convulsion']
     )
-
+    
     muscle_tone_abnormal = st.selectbox(
         "肌张力改变",
         options=[0, 1],
         format_func=lambda x: "异常 (1)" if x == 1 else "正常 (0)",
         help=FEATURE_HELP['muscle_tone_abnormal']
     )
-
+    
     primitive_reflex_abnormal = st.selectbox(
         "原始反射异常",
         options=[0, 1],
         format_func=lambda x: "异常 (1)" if x == 1 else "正常 (0)",
         help=FEATURE_HELP['primitive_reflex_abnormal']
     )
-
+    
     st.subheader("🔬 实验室指标")
-
+    
     csf_wbc = st.number_input(
         "脑脊液白细胞 (×10⁶/L)",
         min_value=0.0, max_value=20000.0, value=0.0, step=5.0,
         help=FEATURE_HELP['csf_wbc']
     )
-
+    
     crp = st.number_input(
         "C反应蛋白 (mg/L)",
         min_value=0.0, max_value=300.0, value=0.0, step=5.0,
         help=FEATURE_HELP['crp']
     )
-
+    
     csf_protein = st.number_input(
         "脑脊液蛋白 (mg/L)",
         min_value=0.0, max_value=10000.0, value=0.0, step=50.0,
@@ -451,7 +500,7 @@ with col1:
 
 with col2:
     st.subheader("💊 临床特征")
-
+    
     # 按照训练时的顺序：机械通气、青紫、低血压
     mechanical_ventilation = st.selectbox(
         "机械通气",
@@ -459,30 +508,30 @@ with col2:
         format_func=lambda x: "需要 (1)" if x == 1 else "不需要 (0)",
         help=FEATURE_HELP['mechanical_ventilation']
     )
-
+    
     cyanosis = st.selectbox(
         "青紫",
         options=[0, 1],
         format_func=lambda x: "有 (1)" if x == 1 else "无 (0)",
         help=FEATURE_HELP['cyanosis']
     )
-
+    
     hypotension = st.selectbox(
         "低血压",
         options=[0, 1],
         format_func=lambda x: "有 (1)" if x == 1 else "无 (0)",
         help=FEATURE_HELP['hypotension']
     )
-
+    
     st.subheader("🦠 感染指标")
-
+    
     csf_culture_positive = st.selectbox(
         "脑脊液培养阳性",
         options=[0, 1],
         format_func=lambda x: "阳性 (1)" if x == 1 else "阴性 (0)",
         help=FEATURE_HELP['csf_culture_positive']
     )
-
+    
     liver_enlargement = st.selectbox(
         "肝脏增大",
         options=[0, 1],
@@ -511,52 +560,53 @@ if predict_btn:
         'csf_culture_positive': csf_culture_positive,
         'liver_enlargement': liver_enlargement
     }
-
+    
     with st.spinner("正在进行数据转换和模型预测..."):
         # 1. 进行特征转换和对数转换
         transformed_features = transform_features(raw_features)
-
+        
         # 2. 加载模型
         model = load_model()
-
+        
         if model is None:
             st.error("❌ 无法加载模型，请确保模型文件存在")
+            st.info("请查看侧边栏的调试信息，确认模型文件是否正确上传")
         else:
             # 3. 执行预测（使用 Youden 阈值 0.248）
-            youden_threshold = 0.248  # 根据训练结果设置的最优阈值
+            youden_threshold = 0.248
             risk_prob, prediction, threshold, features_df = predict_risk(
                 transformed_features, model, threshold_option, youden_threshold
             )
-
+            
             if risk_prob is not None:
                 # 显示结果
                 with col_res:
                     st.success("### 📊 预测结果分析")
-
+                    
                     # 创建三列显示核心指标
                     col_metric1, col_metric2, col_metric3 = st.columns(3)
-
+                    
                     with col_metric1:
                         st.metric(
                             label="风险概率",
                             value=f"{risk_prob:.2%}",
                             delta=f"{'高于' if risk_prob >= threshold else '低于'}阈值"
                         )
-
+                    
                     with col_metric2:
                         risk_level = get_risk_level(risk_prob, threshold)
                         st.metric(label="风险等级", value=risk_level)
-
+                    
                     with col_metric3:
                         st.metric(
                             label="预测结果",
                             value="高风险" if prediction == 1 else "低风险",
                             delta=f"阈值: {threshold:.2f}"
                         )
-
+                    
                     # 进度条可视化
                     st.progress(risk_prob)
-
+                    
                     # 风险指示器
                     if prediction == 1:
                         st.error("### ⚠️ 预测结果: 高风险")
@@ -564,31 +614,30 @@ if predict_btn:
                     else:
                         st.success("### ✅ 预测结果: 低风险")
                         st.info("**临床提示**: 该新生儿风险较低，建议常规监测")
-
+                    
                     # 显示阈值信息
                     st.caption(f"📌 当前阈值策略: **{threshold_option}** (阈值 = {threshold:.3f})")
-
+                    
                     # 显示数据转换详情
                     with st.expander("📐 数据转换详情", expanded=True):
                         st.info("**对数转换结果:**")
-
+                        
                         csf_wbc_raw = transformed_features.get('csf_wbc_raw', 0)
                         log_csf_wbc = transformed_features.get('log_csf_wbc', 0)
                         st.write(f"- 脑脊液白细胞: {csf_wbc_raw:.1f} → log10({csf_wbc_raw:.1f}+1) = **{log_csf_wbc:.4f}**")
-
+                        
                         csf_protein_raw = transformed_features.get('csf_protein_raw', 0)
                         log_csf_protein = transformed_features.get('log_csf_protein', 0)
-                        st.write(
-                            f"- 脑脊液蛋白: {csf_protein_raw:.1f} → log10({csf_protein_raw:.1f}+1) = **{log_csf_protein:.4f}**")
-
+                        st.write(f"- 脑脊液蛋白: {csf_protein_raw:.1f} → log10({csf_protein_raw:.1f}+1) = **{log_csf_protein:.4f}**")
+                        
                         st.caption("注：对数转换使用 log10(x+1)，加1是为了避免 log(0) 的情况")
-
+                    
                     # 特征输入汇总表
                     with st.expander("📋 特征输入汇总", expanded=True):
                         summary_data = []
                         for key, value in raw_features.items():
                             cn_name = FEATURE_NAMES_CN.get(key, key)
-
+                            
                             if key == 'csf_wbc':
                                 log_value = transformed_features.get('log_csf_wbc', 0)
                                 summary_data.append({
@@ -621,15 +670,15 @@ if predict_btn:
                                     "转换后值": "-",
                                     "说明": "连续变量"
                                 })
-
+                        
                         summary_df = pd.DataFrame(summary_data)
                         st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
+                    
                     # 详细建议
                     with st.expander("📋 临床建议", expanded=True):
                         advice = get_risk_advice(prediction, risk_prob, threshold)
                         st.markdown(advice)
-
+                    
                     # 风险因素分析
                     with st.expander("🔍 风险因素识别"):
                         risk_factors = []
@@ -655,7 +704,7 @@ if predict_btn:
                             risk_factors.append(f"✓ 脑脊液蛋白升高 ({csf_protein:.0f} mg/L)")
                         if liver_enlargement == 1:
                             risk_factors.append("✓ 肝脏增大")
-
+                        
                         if risk_factors:
                             st.warning("**识别出的风险因素:**")
                             for factor in risk_factors:
