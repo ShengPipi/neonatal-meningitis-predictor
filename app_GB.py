@@ -137,14 +137,14 @@ FEATURE_NAMES_CN = {
 
 # 特征帮助信息
 FEATURE_HELP = {
-    'muscle_tone_abnormal': '0=正常, 1=肌张力增高或减低',
+    'muscle_tone_abnormal': '0=无, 1=有',
     'convulsion': '0=无惊厥, 1=有惊厥',
     'csf_wbc': '脑脊液白细胞计数，正常范围: 0-15 ×10⁶/L',
     'crp': 'C反应蛋白，正常范围: <10 mg/L',
     'hypotension': '0=血压正常, 1=低血压',
     'mechanical_ventilation': '0=无需机械通气, 1=需要机械通气',
     'cyanosis': '0=无青紫, 1=有青紫',
-    'primitive_reflex_abnormal': '0=原始反射正常, 1=原始反射异常',
+    'primitive_reflex_abnormal': '0=无, 1=有',
     'csf_culture_positive': '0=培养阴性, 1=培养阳性',
     'csf_protein': '脑脊液蛋白含量，正常范围: 150-450 mg/L',
     'liver_enlargement': '0=肝脏大小正常, 1=肝脏增大'
