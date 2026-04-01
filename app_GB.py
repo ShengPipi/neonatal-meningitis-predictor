@@ -374,14 +374,14 @@ with col1:
     muscle_tone_abnormal = st.selectbox(
         "肌张力改变",
         options=[0, 1],
-        format_func=lambda x: "异常 (1)" if x == 1 else "正常 (0)",
+        format_func=lambda x: "有 (1)" if x == 1 else "无 (0)",
         help=FEATURE_HELP['muscle_tone_abnormal']
     )
     
     primitive_reflex_abnormal = st.selectbox(
         "原始反射异常",
         options=[0, 1],
-        format_func=lambda x: "异常 (1)" if x == 1 else "正常 (0)",
+        format_func=lambda x: "有 (1)" if x == 1 else "无 (0)",
         help=FEATURE_HELP['primitive_reflex_abnormal']
     )
     
